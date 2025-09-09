@@ -1,9 +1,17 @@
-# scanner.py
 import scapy.all as scapy
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Optional
 import random
 import time
+import socket
+import ipaddress
+try:
+    import dns.resolver
+    import dns.reversename
+    _HAS_DNSPYTHON = True
+except ImportError:
+    _HAS_DNSPYTHON = False
+
 
 def discover_hosts(cidr: str) -> List[Dict[str, str]]:
 
@@ -101,3 +109,81 @@ def tcp_port_scan_many(hosts, ports, timeout=0.8):
     for ip in results:
         results[ip] = sorted(set(results[ip]))
     return results
+
+def reverse_dns_lookup(ip: str, timeout: float = 2.0, nameserver: Optional[str] = None) -> Optional[str]:
+    """
+    Faz DNS reverso (PTR) de um único IP.
+    Retorna o hostname (sem ponto final) ou None se não houver resposta/PTR.
+    - Se dnspython estiver disponível, usa-o (permite nameserver e timeout).
+    - Caso contrário, usa socket.gethostbyaddr() (sem nameserver customizável).
+    """
+    # Valida IP
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        return None
+
+    # Caminho com dnspython (preferencial)
+    if _HAS_DNSPYTHON:
+        try:
+            resolver = dns.resolver.Resolver(configure=True)
+            resolver.lifetime = timeout
+            resolver.timeout = timeout
+            if nameserver:
+                resolver.nameservers = [nameserver]
+
+            rev = dns.reversename.from_address(ip)  # usa ip6.arpa/in-addr.arpa automaticamente
+            ans = resolver.resolve(rev, "PTR")
+            # Pode haver múltiplos PTRs; pegamos o primeiro
+            target = str(ans[0].target).rstrip(".")
+            return target or None
+        except Exception:
+            return None
+
+    # Fallback: socket.gethostbyaddr (usa resolvers do sistema)
+    try:
+        host, _aliases, _ips = socket.gethostbyaddr(ip)
+        return host.rstrip(".")
+    except Exception:
+        return None
+def reverse_dns_many(ips: List[str], timeout: float = 2.0, nameserver: Optional[str] = None, workers: int = 50) -> Dict[str, Optional[str]]:
+    """
+    Resolve PTR para uma lista de IPs em paralelo.
+    Retorna { ip: hostname_ou_None }.
+    """
+    results: Dict[str, Optional[str]] = {}
+
+    # normaliza/dedup
+    uniq_ips = []
+    seen = set()
+    for ip in ips:
+        ip = ip.strip()
+        if not ip or ip in seen:
+            continue
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError:
+            continue
+        uniq_ips.append(ip)
+        seen.add(ip)
+
+    if not uniq_ips:
+        return results
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(reverse_dns_lookup, ip, timeout, nameserver): ip for ip in uniq_ips}
+        for fut in as_completed(futs):
+            ip = futs[fut]
+            try:
+                results[ip] = fut.result()
+            except Exception:
+                results[ip] = None
+
+    return results
+
+
+
+
+
+
+
