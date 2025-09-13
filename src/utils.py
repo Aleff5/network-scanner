@@ -1,4 +1,10 @@
+import socket
+import ipaddress
+from contextlib import closing
+from typing import List, Dict, Any
 import requests 
+import json, csv, os
+
 
 MAC_VENDOR_CACHE = {}
 
@@ -21,12 +27,6 @@ def get_mac_vendor(mac_address: str) -> str:
             return "Fabricante não encontrado"
     except requests.RequestException:
         return "Erro: Impossível conectar à API"
-
-# utils.py
-import socket
-import ipaddress
-from contextlib import closing
-from typing import List
 
 def get_primary_ipv4(probe_host: str = "8.8.8.8", probe_port: int = 80) -> str:
     
@@ -77,3 +77,26 @@ def list_local_ipv4() -> List[str]:
             pass
 
     return sorted(ips)
+
+
+
+def export_table(rows: List[Dict[str, Any]], path: str) -> None:
+
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".json":
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(rows, f, ensure_ascii=False, indent=2)
+        return
+
+    if ext == ".csv":
+        fieldnames = sorted({k for row in rows for k in row.keys()}) if rows else []
+        with open(path, "w", encoding="utf-8", newline="") as f:  
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                norm = {k: (",".join(map(str, v)) if isinstance(v, (list, tuple, set)) else v)
+                        for k, v in row.items()}
+                writer.writerow(norm)
+        return
+
+    raise ValueError("Extensão não suportada. Use .json ou .csv")

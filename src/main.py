@@ -1,58 +1,76 @@
-# main.py
 import ipaddress
 import typer
 from rich.console import Console
 from rich.table import Table
-from typing_extensions import Annotated, Optional, List
+from typing_extensions import Annotated
+from typing import Optional, List, Dict, Any
+
 import scanner
 import utils
-import ipaddress
 
 app = typer.Typer(help="NetScan: Uma ferramenta de scanner de rede em Python.")
 console = Console()
 
-def _parse_ports(ports_str: str):
+
+def _parse_ports(ports_str: str) -> List[int]:
     if "-" in ports_str:
-        try:
-            start, end = ports_str.split("-", 1)
-            return list(range(int(start), int(end) + 1))
-        except ValueError:
-            console.print("[bold red]Erro: range de portas inválido. Use 'inicio-fim'.[/bold red]")
-            raise typer.Exit()
-    else:
-        try:
-            return [int(p.strip()) for p in ports_str.split(",") if p.strip()]
-        except ValueError:
-            console.print("[bold red]Erro: lista de portas inválida. Use '22,80,443'.[/bold red]")
-            raise typer.Exit()
+        start, end = ports_str.split("-", 1)
+        return list(range(int(start), int(end) + 1))
+    return [int(p.strip()) for p in ports_str.split(",") if p.strip()]
 
 @app.command(help="Descobre hosts ativos na rede (ex: 192.168.1.0/24).")
-def discover(cidr: Annotated[str, typer.Argument(help="O endereço da rede no formato CIDR.")] ):
+def discover(
+    cidr: Annotated[str, typer.Argument(help="O endereço da rede no formato CIDR.")],
+    mac_vendor: Annotated[bool, typer.Option("--mac", "-m", help="Consultar fabricante (OUI) dos MACs.")] = False,
+    out: Annotated[Optional[str], typer.Option("--out", "-o", help="Exportar resultados para .json ou .csv.")] = None,
+):
     console.print(f"[bold cyan]Iniciando descoberta de hosts em {cidr}...[/bold cyan]")
     found_hosts = scanner.discover_hosts(cidr)
+
     if not found_hosts:
         console.print("[bold yellow]Nenhum host ativo encontrado ou ocorreu um erro.[/bold yellow]")
         raise typer.Exit()
 
-    table = Table(title="Hosts Ativos Encontrados")
+    title = "Hosts Ativos Encontrados"
+    table = Table(title=title)
     table.add_column("IP", justify="left", style="cyan", no_wrap=True)
     table.add_column("MAC Address", style="magenta")
-    table.add_column("Fabricante", style="green")
+    if mac_vendor:
+        table.add_column("Fabricante", style="green")
 
-    with console.status("[bold green]Buscando fabricantes...", spinner="dots"):
+    rows: List[Dict[str, Any]] = []
+
+    status_msg = "[bold green]Buscando fabricantes...[/bold green]" if mac_vendor else "[bold green]Montando lista...[/bold green]"
+    with console.status(status_msg, spinner="dots"):
         for host in found_hosts:
-            vendor = utils.get_mac_vendor(host['mac'])
-            table.add_row(host['ip'], host['mac'], vendor)
+            ip = host["ip"]
+            mac = host["mac"]
+            if mac_vendor:
+                vendor = utils.get_mac_vendor(mac)
+                table.add_row(ip, mac, vendor)
+                rows.append({"ip": ip, "mac": mac, "vendor": vendor})
+            else:
+                table.add_row(ip, mac)
+                rows.append({"ip": ip, "mac": mac})
 
     console.print(table)
+
+    if out:
+        utils.export_table(rows, out)
+        console.print(f"[bold green]Exportado para[/bold green] {out}")
 
 @app.command(help="Escaneia portas TCP abertas de um host.")
 def portscan(
     host: Annotated[str, typer.Argument(help="O IP do host para escanear.")],
-    ports: Annotated[str, typer.Option("--ports", "-p", help="Portas (ex: 22,80,443 ou 1-1024).")] = "1-1024",
-    timeout: Annotated[float, typer.Option("--timeout", "-t", help="Timeout em segundos.")] = 0.5,
+    ports: Annotated[str, typer.Option("--ports", "-p", help="Portas para escanear (ex: 22,80,443 ou 1-1024).")] = "1-1024",
+    timeout: Annotated[float, typer.Option("--timeout", "-t", help="Timeout de resposta em segundos.")] = 0.5,
+    out: Annotated[Optional[str], typer.Option("--out", "-o", help="Exportar resultados para .json ou .csv.")] = None,
 ):
-    port_list = _parse_ports(ports)
+    try:
+        port_list = _parse_ports(ports)
+    except Exception:
+        console.print("[bold red]Erro: Formato de portas inválido. Use '22,80,443' ou 'inicio-fim'.[/bold red]")
+        raise typer.Exit()
 
     with console.status(f"[bold green]Escaneando {len(port_list)} portas em {host}...", spinner="earth"):
         open_ports = scanner.tcp_port_scan(host, port_list, timeout)
@@ -67,14 +85,24 @@ def portscan(
     else:
         console.print(f"[bold yellow]Nenhuma porta aberta encontrada em {host}.[/bold yellow]")
 
+    if out:
+        utils.export_table([{"ip": host, "open_tcp": open_ports}], out)
+        console.print(f"[bold green]Exportado para[/bold green] {out}")
+
 @app.command(name="portscan-many", help="Escaneia portas TCP abertas em vários hosts (lista de IPs ou um CIDR).")
 def portscan_many(
     hosts: Annotated[str, typer.Argument(help="IPs separados por vírgula (ex: 192.168.0.10,192.168.0.20) OU um CIDR (ex: 192.168.0.0/24).")],
     ports: Annotated[str, typer.Option("--ports", "-p", help="Portas (ex: 135,139,445 ou 1-1024).")] = "1-1024",
-    timeout: Annotated[float, typer.Option("--timeout", "-t", help="Timeout em segundos.")] = 2.0,
+    timeout: Annotated[float, typer.Option("--timeout", "-t", help="Timeout em segundos.")] = 0.8,
+    out: Annotated[Optional[str], typer.Option("--out", "-o", help="Exportar resultados para .json ou .csv.")] = None,
 ):
-    port_list = _parse_ports(ports)
+    try:
+        port_list = _parse_ports(ports)
+    except Exception:
+        console.print("[bold red]Erro: Formato de portas inválido.[/bold red]")
+        raise typer.Exit()
 
+    # Detecta CIDR vs lista
     if "/" in hosts:
         try:
             net = ipaddress.ip_network(hosts, strict=False)
@@ -100,23 +128,27 @@ def portscan_many(
         table.add_row(ip, ", ".join(map(str, opened)) if opened else "—")
     console.print(table)
 
+    if out:
+        rows = [{"ip": ip, "open_tcp": results.get(ip, [])} for ip in host_list]
+        utils.export_table(rows, out)
+        console.print(f"[bold green]Exportado para[/bold green] {out}")
+
 @app.command(help="DNS reverso (PTR) para IP único, lista de IPs ou um CIDR.")
 def rdns(
     targets: Annotated[str, typer.Argument(help="IP único (ex: 192.168.0.10), lista separada por vírgula ou CIDR (ex: 192.168.0.0/24).")],
     nameserver: Annotated[Optional[str], typer.Option("--ns", help="Nameserver DNS para consulta (ex: 8.8.8.8).")] = None,
     timeout: Annotated[float, typer.Option("--timeout", "-t", help="Timeout por consulta (s).")] = 2.0,
     workers: Annotated[int, typer.Option("--workers", "-w", help="Máximo de consultas em paralelo.")] = 50,
+    out: Annotated[Optional[str], typer.Option("--out", "-o", help="Exportar resultados para .json ou .csv.")] = None,
 ):
-    host_list: List[str] = []
+    # constrói lista de IPs a partir de IP único, lista, ou CIDR
     if "/" in targets:
         try:
             net = ipaddress.ip_network(targets, strict=False)
             host_list = [str(ip) for ip in net.hosts()]
-  
         except ValueError:
             console.print("[bold red]CIDR inválido.[/bold red]")
             raise typer.Exit()
-  
     else:
         host_list = [h.strip() for h in targets.split(",") if h.strip()]
 
@@ -135,11 +167,16 @@ def rdns(
         table.add_row(ip, host or "—")
     console.print(table)
 
+    if out:
+        rows = [{"ip": ip, "ptr": results.get(ip)} for ip in host_list]
+        utils.export_table(rows, out)
+        console.print(f"[bold green]Exportado para[/bold green] {out}")
 
 @app.command(help="Mostra o(s) IP(s) desta máquina.")
-def mip(
+def myip(
     all: Annotated[bool, typer.Option("--all", "-a", help="Listar todos os IPv4 locais.")] = False,
     probe: Annotated[str, typer.Option("--probe", help="Host de referência para rota (default: 8.8.8.8).")] = "8.8.8.8",
+    out: Annotated[Optional[str], typer.Option("--out", "-o", help="Exportar resultados para .json ou .csv.")] = None,
 ):
     if all:
         addrs = utils.list_local_ipv4()
@@ -148,12 +185,18 @@ def mip(
         for ip in addrs:
             table.add_row(ip)
         console.print(table if addrs else "[bold yellow]Nenhum IPv4 local encontrado.[/bold yellow]")
+        if out:
+            utils.export_table([{"ip": ip} for ip in addrs], out)
+            console.print(f"[bold green]Exportado para[/bold green] {out}")
     else:
         ip = utils.get_primary_ipv4(probe_host=probe)
-        table = Table(title="IP principal")
+        table = Table(title="IP principal (rota de saída)")
         table.add_column("IP", style="cyan")
         table.add_row(ip)
         console.print(table)
+        if out:
+            utils.export_table([{"ip": ip, "type": "primary"}], out)
+            console.print(f"[bold green]Exportado para[/bold green] {out}")
 
 if __name__ == "__main__":
     app()
