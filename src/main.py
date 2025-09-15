@@ -60,7 +60,7 @@ def discover(
         console.print(f"[bold green]Exportado para[/bold green] {out}")
 
 @app.command(help="Escaneia portas TCP abertas de um host.")
-def portscan(
+def tcpscan(
     host: Annotated[str, typer.Argument(help="O IP do host para escanear.")],
     ports: Annotated[str, typer.Option("--ports", "-p", help="Portas para escanear (ex: 22,80,443 ou 1-1024).")] = "1-1024",
     timeout: Annotated[float, typer.Option("--timeout", "-t", help="Timeout de resposta em segundos.")] = 0.5,
@@ -89,8 +89,8 @@ def portscan(
         utils.export_table([{"ip": host, "open_tcp": open_ports}], out)
         console.print(f"[bold green]Exportado para[/bold green] {out}")
 
-@app.command(name="portscan-many", help="Escaneia portas TCP abertas em vários hosts (lista de IPs ou um CIDR).")
-def portscan_many(
+@app.command(name="tcpscan-many", help="Escaneia portas TCP abertas em vários hosts (lista de IPs ou um CIDR).")
+def tcpscan_many(
     hosts: Annotated[str, typer.Argument(help="IPs separados por vírgula (ex: 192.168.0.10,192.168.0.20) OU um CIDR (ex: 192.168.0.0/24).")],
     ports: Annotated[str, typer.Option("--ports", "-p", help="Portas (ex: 135,139,445 ou 1-1024).")] = "1-1024",
     timeout: Annotated[float, typer.Option("--timeout", "-t", help="Timeout em segundos.")] = 0.8,
@@ -197,6 +197,49 @@ def myip(
         if out:
             utils.export_table([{"ip": ip, "type": "primary"}], out)
             console.print(f"[bold green]Exportado para[/bold green] {out}")
+
+@app.command(help="Escaneia portas UDP de um host (classificação: open, closed, filtered, open|filtered).")
+def udpscan(
+    host: Annotated[str, typer.Argument(help="O IP do host para escanear.")],
+    ports: Annotated[str, typer.Option("--ports", "-p", help="Portas ex: 53,123,161 ou 1-1024.")] = "53,123,161,500,1900",
+    timeout: Annotated[float, typer.Option("--timeout", "-t", help="Timeout (s).")] = 1.5,
+    retries: Annotated[int, typer.Option("--retries", help="Reenvios para portas sem resposta.")] = 1,
+    batch_size: Annotated[int, typer.Option("--batch", help="Tamanho do lote de envio.")] = 128,
+    inter: Annotated[float, typer.Option("--inter", help="Intervalo entre pacotes (s).")] = 0.002,
+    profile: Annotated[str, typer.Option("--payloads", help="Perfil de payloads UDP: none|smart")] = "none",
+    out: Annotated[Optional[str], typer.Option("--out", "-o", help="Exportar .json ou .csv.")] = None,
+):
+    def _parse_ports(s: str) -> List[int]:
+        if "-" in s:
+            a, b = s.split("-", 1)
+            return list(range(int(a), int(b) + 1))
+        return [int(x.strip()) for x in s.split(",") if x.strip()]
+
+    try:
+        port_list = _parse_ports(ports)
+    except Exception:
+        console.print("[bold red]Formato de portas inválido.[/bold red]")
+        raise typer.Exit()
+
+    with console.status(f"[bold green]UDP scan em {host} ({len(port_list)} portas)...", spinner="dots"):
+        res = scanner.udp_port_scan(
+            host, port_list, timeout=timeout, batch_size=batch_size, inter=inter, retries=retries, payload_profile=profile
+        )
+
+    table = Table(title=f"UDP scan em {host}")
+    table.add_column("Estado", style="green")
+    table.add_column("Portas", style="cyan")
+    for state in ["open", "closed", "filtered", "open|filtered"]:
+        ports_str = ", ".join(map(str, res[state])) if res[state] else "—"
+        table.add_row(state, ports_str)
+    console.print(table)
+
+    if out:
+        rows = [{"ip": host, "state": state, "ports": res[state]} for state in res]
+        utils.export_table(rows, out)
+        console.print(f"[bold green]Exportado para[/bold green] {out}")
+
+
 
 if __name__ == "__main__":
     app()

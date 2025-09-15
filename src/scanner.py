@@ -1,6 +1,6 @@
 import scapy.all as scapy
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Iterable, Tuple
 import random
 import time
 import socket
@@ -180,6 +180,97 @@ def reverse_dns_many(ips: List[str], timeout: float = 2.0, nameserver: Optional[
                 results[ip] = None
 
     return results
+
+
+
+def _udp_payload_for(port: int, profile: str = "none") -> Optional[bytes]:
+
+    if profile != "smart":
+        return None
+    if port == 53:
+        import struct
+        qname = b"\x07example\x03com\x00"  
+        header = struct.pack("!HHHHHH", 0xBEEF, 0x0100, 1, 0, 0, 0)
+        question = qname + struct.pack("!HH", 1, 1)  
+        return header + question
+    if port == 123:
+        pkt = bytearray(48)
+        pkt[0] = (0 << 6) | (4 << 3) | 3  
+        return bytes(pkt)
+    if port == 69:
+        return b"\x00\x01" + b"test\x00" + b"netascii\x00"
+    return None
+
+
+def udp_port_scan(
+    ip: str,
+    ports: List[int],
+    timeout: float = 1.5,
+    batch_size: int = 128,
+    inter: float = 0.002,
+    retries: int = 1,
+    payload_profile: str = "none",
+) -> Dict[str, List[int]]:
+    
+    state: Dict[int, str] = {p: "unknown" for p in ports}
+
+    def _classify_icmp(code: int) -> str:
+        if code == 3:
+            return "closed"
+        if code in (1, 2, 9, 10, 13):  
+            return "filtered"
+        return "filtered"
+
+    pending = set(ports)
+
+    for attempt in range(retries + 1):
+        if not pending:
+            break
+
+        this_batch = sorted(list(pending))[:batch_size]
+        pkts = []
+        sent_map: Dict[Tuple[str, int, int], int] = {}  
+        for p in this_batch:
+            sport = random.randint(49152, 65535)
+            payload = _udp_payload_for(p, payload_profile)
+            layer = scapy.IP(dst=ip) / scapy.UDP(sport=sport, dport=p)
+            if payload is not None:
+                layer = layer / scapy.Raw(load=payload)
+            pkts.append(layer)
+            sent_map[(ip, sport, p)] = p
+
+        ans, unans = scapy.sr(pkts, timeout=timeout, verbose=False, inter=inter)
+
+        for sent, recv in ans:
+            dport = sent[scapy.UDP].dport
+            if recv.haslayer(scapy.ICMP) and recv[scapy.ICMP].type == 3:
+                code = int(recv[scapy.ICMP].code)
+                state[dport] = _classify_icmp(code)
+                if dport in pending:
+                    pending.remove(dport)
+                continue
+
+            if recv.haslayer(scapy.UDP):
+                state[dport] = "open"
+                if dport in pending:
+                    pending.remove(dport)
+                continue
+
+            state[dport] = "filtered"
+            pending.discard(dport)
+
+        pending = {p for p in pending if state[p] == "unknown"}
+
+    for p in ports:
+        if state[p] == "unknown":
+            state[p] = "open|filtered"
+
+    out: Dict[str, List[int]] = {"open": [], "closed": [], "filtered": [], "open|filtered": []}
+    for p, s in state.items():
+        out[s].append(p)
+    for k in out:
+        out[k].sort()
+    return out
 
 
 
