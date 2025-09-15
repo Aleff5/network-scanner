@@ -365,4 +365,4 @@ Thumbs.db
 ```
 ---
 ## Licença
-Este projeto é distribuído sob a licença MIT. Crie um arquivo LICENSE na raiz do projeto com o texto da licença
+Este projeto é distribuído sob a licença MIT. Crie um arquivo ``LICENSE`` na raiz do projeto com o texto da licença
