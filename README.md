@@ -105,9 +105,9 @@ python main.py discover 192.168.0.0/24
 ```
 **Opções:**
 
-* -m, --mac: Consulta o fabricante do dispositivo (OUI) com base no MAC address.
+* ``-m``, ``--mac``: Consulta o fabricante do dispositivo (OUI) com base no MAC address.
 
-* -o, --out: Exporta o resultado para um arquivo .json ou .csv.
+* ``-o``, ``--out``: Exporta o resultado para um arquivo .json ou .csv.
 
 Exemplos:
 ```bash
@@ -130,11 +130,11 @@ python main.py tcpscan 192.168.0.113 -p 1-1024 -t 0.7
 
 **Opções:**
 
-* -p, --ports: Lista ou intervalo de portas (ex.: 22,80,443 ou 1-1024).
+* ``-p``, ``--ports``: Lista ou intervalo de portas (ex.: 22,80,443 ou 1-1024).
 
-* -t, --timeout: Timeout por tentativa (segundos).
+* ``-t``, ``--timeout``: Timeout por tentativa (segundos).
 
-* -o, --out: Exporta o resultado para .json ou .csv.
+* ``-o``, ``--out``: Exporta o resultado para .json ou .csv.
 
 **Exemplos:**
 ```bash
@@ -159,11 +159,11 @@ python main.py tcpscan-many 192.168.0.10,192.168.0.20 -p 135,139,445
 
 * hosts (posicional): IPs separados por vírgula (ex.: ip1,ip2,...) ou um CIDR (ex.: 192.168.0.0/24).
 
-* -p, --ports: Lista/intervalo de portas.
+* ``-p``, ``--ports``: Lista/intervalo de portas.
 
-* -t, --timeout: Timeout por tentativa (segundos).
+* ``-t``, ``--timeout``: Timeout por tentativa (segundos).
 
-* -o, --out: Exporta o resultado para .json ou .csv.
+* ``-o``, ``--out``: Exporta o resultado para .json ou .csv.
 
 **Exemplos:**
 ```bash
@@ -178,13 +178,13 @@ python main.py tcpscan-many 192.168.0.0/29 -p 1-1024 -t 0.8 -o tcp_many.json
 
 Como UDP não tem handshake, a classificação é heurística:
 
-* open: houve resposta UDP (ou do protocolo esperado).
+* ``open``: houve resposta UDP (ou do protocolo esperado).
 
-* closed: recebeu ICMP Type 3 Code 3 (Port Unreachable).
+* ``closed``: recebeu ICMP Type 3 Code 3 (Port Unreachable).
 
-* filtered: recebeu ICMP administrativamente proibido (outros codes do Type 3) ou outro filtro explícito.
+* ``filtered``: recebeu ICMP administrativamente proibido (outros codes do Type 3) ou outro filtro explícito.
 
-* open|filtered: sem resposta; pode estar aberto e silencioso ou filtrado.
+* ``open|filtered``: sem resposta; pode estar aberto e silencioso ou filtrado.
 
 
 **Uso:**
@@ -195,19 +195,19 @@ python main.py udpscan 192.168.0.113 -p 53,123,161,500,1900 --payloads smart -t 
 
 **Opções:**
 
-* -p, --ports: Lista ou intervalo de portas (ex.: 53,123,161 ou 1-1024).
+* ``-p``, ``--ports``: Lista ou intervalo de portas (ex.: 53,123,161 ou 1-1024).
 
-* -t, --timeout: Tempo de espera por lote (segundos).
+* ``-t``, ``--timeout``: Tempo de espera por lote (segundos).
 
-* --retries: Reenvios para portas sem resposta.
+* ``--retries``: Reenvios para portas sem resposta.
 
-* --batch: Tamanho do lote de envio (padrão: 128).
+* ``--batch``: Tamanho do lote de envio (padrão: 128).
 
-* --inter: Intervalo entre pacotes (segundos) para evitar bursts.
+* ``--inter``: Intervalo entre pacotes (segundos) para evitar bursts.
 
-* --payloads: none (pacote vazio) ou smart (pequenos payloads para provocar respostas — DNS/NTP/TFTP).
+* ``--payloads``: none (pacote vazio) ou smart (pequenos payloads para provocar respostas — DNS/NTP/TFTP).
 
-* -o, --out: Exporta o resultado para .json ou .csv.
+* ``-o``, ``--out``: Exporta o resultado para .json ou .csv.
 
 **Exemplos:**
 ```bash
@@ -230,15 +230,15 @@ python main.py rdns 192.168.0.113,192.168.0.1
 
 **Opções:**
 
-targets (posicional): IP único, lista ip1,ip2,... ou um CIDR.
+* targets (posicional): IP único, lista ip1,ip2,... ou um CIDR.
 
---ns: Nameserver para consulta (ex.: 8.8.8.8).
+* ``--ns``: Nameserver para consulta (ex.: 8.8.8.8).
 
--t, --timeout: Timeout por consulta (segundos).
+* ``-t``, ``--timeout``: Timeout por consulta (segundos).
 
--w, --workers: Paralelismo máximo das consultas.
+* ``-w``, ``--workers``: Paralelismo máximo das consultas.
 
--o, --out: Exporta o resultado para .json ou .csv.
+* ``-o``, ``--out``: Exporta o resultado para .json ou .csv.
 
 **Exemplos:**
 ```bash
@@ -248,7 +248,7 @@ python main.py rdns 192.168.0.113,192.168.0.1
 # Intervalo CIDR usando o DNS do roteador e exportando
 python main.py rdns 192.168.0.0/30 --ns 192.168.0.1 -t 2 -w 50 -o rdns.csv
 ```
-__Nota: Sem a biblioteca dnspython, o comando usa socket.gethostbyaddr() (DNS do sistema) e ignora --ns.__
+>__Nota: Sem a biblioteca dnspython, o comando usa socket.gethostbyaddr() (DNS do sistema) e ignora --ns.__
 
 ### 6) IP da máquina (local)
 
@@ -262,11 +262,11 @@ python main.py myip
 
 **Opções:**
 
-* --all, -a: Lista todos os IPv4 locais.
+* `--all`, ``-a``: Lista todos os IPv4 locais.
 
-* --probe: Host de referência para a rota (padrão: 8.8.8.8).
+* ``--probe``: Host de referência para a rota (padrão: 8.8.8.8).
 
-* -o, --out: Exporta o resultado para .json ou .csv.
+* ``-o``, ``--out``: Exporta o resultado para .json ou .csv.
 
 **Exemplos:** 
 ```bash
